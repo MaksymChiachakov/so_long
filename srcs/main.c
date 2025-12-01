@@ -20,13 +20,21 @@ typedef struct s_data
 
     void    *background;
     void    *wall;
+    void    *exit_close;
+    void    *exit_open;
+    void    *treasure;
+    void    *floor;
     void    *player_img;
 
     int     player_x;
     int     player_y;
 
+    int offset_x;   
+    int offset_y;
+
     int     player_w;
     int     player_h;
+
 
     char    **map;
     int     rows;
@@ -79,26 +87,91 @@ void init_player(t_data *data)
     }
 }
 
-void render_map(t_data *data)
-{
-    for (int y = 0; y < data->rows; y++)
-    {
-        for (size_t x = 0; x < strlen(data->map[y]); x++)
-        {
-            char c = data->map[y][x];
-            void *img_to_put = NULL;
-            if (c == '1')
-                img_to_put = data->wall;
-            else
-                img_to_put = data->background;
 
-            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr, img_to_put, x*TILE_SIZE, y*TILE_SIZE);
+void center_map(t_data *data)
+{
+    int map_width = data->cols * TILE_SIZE;
+    int map_height = data->rows * TILE_SIZE;
+
+    data->offset_x = (WINDOW_WIDTH - map_width - 500) / 2;
+    data->offset_y = (WINDOW_HEIGHT - map_height - 400) / 2;
+
+    if (data->offset_x < 0) data->offset_x = 0;
+    if (data->offset_y < 0) data->offset_y = 0;
+}
+
+void render_background(t_data *data)
+{
+    for (int y = 0; y < WINDOW_HEIGHT; y += TILE_SIZE)
+    {
+        for (int x = 0; x < WINDOW_WIDTH; x += TILE_SIZE)
+        {
+            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr,
+                data->background, x, y);
         }
     }
+}
 
-    mlx_put_image_to_window(data->mlx_ptr, data->win_ptr,
-                            data->player_img,
-                            data->player_x, data->player_y);
+// Функція для ручної прозорості персонажа
+void put_image_with_transparency(t_data *data, void *img, int img_w, int img_h, int x_pos, int y_pos)
+{
+    int bpp, size_line, endian;
+    char *addr = mlx_get_data_addr(img, &bpp, &size_line, &endian);
+
+    int transparent_color = 0xFF00FF; // колір фону, який треба пропускати
+
+    for (int j = 0; j < img_h; j++)
+    {
+        for (int i = 0; i < img_w; i++)
+        {
+            int *pixel = (int *)(addr + j * size_line + i * (bpp / 8));
+            if (*pixel != transparent_color)
+            {
+                mlx_pixel_put(data->mlx_ptr, data->win_ptr,
+                    x_pos + i,
+                    y_pos + j,
+                    *pixel);
+            }
+        }
+    }
+}
+
+void render_map(t_data *data)
+{
+    render_background(data);
+
+    for (int y = 0; y < data->rows; y++)
+{
+    for (size_t x = 0; x < strlen(data->map[y]); x++)
+    {
+        char c = data->map[y][x];
+
+        if (c == '1')
+            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr, data->wall,
+                                    data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+        else if (c == 'E')
+        {
+            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr, data->floor,
+                                    data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+            put_image_with_transparency(data, data->exit_close, data->player_w, data->player_h,
+                                        data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+        }
+        else if (c == 'C')
+        {
+            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr, data->floor,
+                                    data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+            put_image_with_transparency(data, data->treasure, data->player_w, data->player_h,
+                                        data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+        }
+        else
+            mlx_put_image_to_window(data->mlx_ptr, data->win_ptr, data->floor,
+                                    data->offset_x + x * TILE_SIZE, data->offset_y + y * TILE_SIZE);
+    }
+}
+
+    put_image_with_transparency(data, data->player_img, data->player_w, data->player_h,
+                            data->offset_x + data->player_x, data->offset_y + data->player_y);
+
 }
 
 int handle_keypress(int keysym, t_data *data)
@@ -107,17 +180,21 @@ int handle_keypress(int keysym, t_data *data)
     {
         mlx_destroy_window(data->mlx_ptr, data->win_ptr);
         data->win_ptr = NULL;
-		exit(0);
-        return (0);
+        exit(0);
+        return 0;
     }
 
     int new_x = data->player_x;
     int new_y = data->player_y;
 
-    if (keysym == XK_Left)  new_x -= TILE_SIZE;
-    if (keysym == XK_Right) new_x += TILE_SIZE;
-    if (keysym == XK_Up)    new_y -= TILE_SIZE;
-    if (keysym == XK_Down)  new_y += TILE_SIZE;
+    if (keysym == XK_a || keysym == XK_A)  
+        new_x -= TILE_SIZE;
+    if (keysym == XK_d || keysym == XK_D) 
+        new_x += TILE_SIZE;
+    if (keysym == XK_w|| keysym == XK_W)    
+        new_y -= TILE_SIZE;
+    if (keysym == XK_s || keysym == XK_S)  
+        new_y += TILE_SIZE;
 
     int tile_x = new_x / TILE_SIZE;
     int tile_y = new_y / TILE_SIZE;
@@ -141,12 +218,16 @@ int main(void)
     data.mlx_ptr = mlx_init();
     if (!data.mlx_ptr) return MLX_ERROR;
 
-    data.win_ptr = mlx_new_window(data.mlx_ptr, WINDOW_WIDTH, WINDOW_HEIGHT, "Game");
+    data.win_ptr = mlx_new_window(data.mlx_ptr, WINDOW_WIDTH, WINDOW_HEIGHT, "so_long");
     if (!data.win_ptr) return MLX_ERROR;
 
-    data.background = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/water.xpm", &w, &h);
-    data.wall = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/border.xpm", &w, &h);
-    data.player_img = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/C0.xpm", &data.player_w, &data.player_h);
+    data.background = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/background.xpm", &w, &h);
+    data.wall = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/wall.xpm", &w, &h);
+    data.floor = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/floor.xpm", &w, &h);
+    data.exit_close = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/exit_close.xpm", &w, &h);
+    data.treasure = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/treasure.xpm", &w, &h);
+    data.exit_open = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/steps.xpm", &w, &h);
+    data.player_img = mlx_xpm_file_to_image(data.mlx_ptr, "./sprites/player.xpm", &data.player_w, &data.player_h);
 
     if (!data.background || !data.wall || !data.player_img)
     {
@@ -154,7 +235,6 @@ int main(void)
         return 1;
     }
 
-    // lire map
     data.map = read_map("maps/map.ber", &data.rows, &data.cols);
     if (!data.map)
     {
@@ -162,10 +242,11 @@ int main(void)
         return 1;
     }
 
+    center_map(&data);
     init_player(&data);
     render_map(&data);
 
     mlx_hook(data.win_ptr, KeyRelease, KeyReleaseMask, &handle_keypress, &data);
     mlx_loop(data.mlx_ptr);
-    return (0);
+    return 0;
 }
